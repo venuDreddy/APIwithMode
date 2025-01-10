@@ -34,7 +34,7 @@ x_train = scaler.fit_transform(x_train)
 x_test = scaler.transform(x_test)
 
 # Initialize and train the classifier
-clf = LogisticRegression(solver='lbfgs', random_state=42)
+clf = LogisticRegression(solver='lbfgs', random_state=42, multi_class='auto')
 clf.fit(x_train, y_train.values.ravel())
 
 # Define class names
@@ -52,43 +52,36 @@ transform = transforms.Compose([
 ])
 
 def load_model():
+    # Define the model structure
+    model = models.resnet18(pretrained=False)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Sequential(
+        nn.Linear(num_ftrs, 512),
+        nn.ReLU(),
+        nn.Dropout(0.25),
+        nn.Linear(512, 256),
+        nn.ReLU(),
+        nn.Dropout(0.5),
+        nn.Linear(256, 128),
+        nn.ReLU(),
+        nn.Dropout(0.5),
+        nn.Linear(128, 64),
+        nn.ReLU(),
+        nn.Linear(64, 7)  # Assuming 7 classes, modify if needed
+    )
+    
     try:
-        model = models.resnet18(weights=None)
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Sequential(
-            nn.Linear(num_ftrs, 512),
-            nn.ReLU(),
-            nn.Dropout(0.25),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 7)  # Assuming 7 classes, modify if needed
-        )
-        
-        if not os.path.exists(MODEL_PATH):
-            print(f"Model file {MODEL_PATH} not found.")
-            return None
-            
-        state_dict = torch.load(MODEL_PATH, map_location=device, weights_only=True)
+        state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
         return model
-    except Exception as e:
-        print(f"Error loading model: {str(e)}")
+    except FileNotFoundError:
+        print(f"Model file {MODEL_PATH} not found.")
         return None
 
 # Load model at startup
 model = load_model()
 model.to(device)
-
-# After model loading
-if model is None:
-    raise RuntimeError("Failed to load the model. Application cannot start.")
 
 @app.route("/", methods=["GET"])
 def home():
@@ -182,13 +175,6 @@ def predict():
             "message": "Failed to process image"
         }), 500
 
-@app.route("/health", methods=["GET"])
-def health_check():
-    return jsonify({
-        "status": "healthy",
-        "model_loaded": model is not None
-    })
-
 # Add CORS support
 @app.after_request
 def after_request(response):
@@ -198,5 +184,5 @@ def after_request(response):
     return response
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port) 
