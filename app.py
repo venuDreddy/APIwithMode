@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 from torchvision import transforms
+from torchvision import models, datasets, transforms
 from flask import Flask, request, jsonify
 from PIL import Image
 import numpy as np
@@ -38,7 +39,34 @@ clf = LogisticRegression(solver='lbfgs', random_state=42)
 clf.fit(x_train, y_train.values.ravel())
 
 # Define class names
-class_names = ['10_rupee', '20_rupee', '50_rupee', '100_rupee', '200_rupee', '500_rupee', '2000_rupee']
+#class_names = ['10',
+#                '20',
+#                '100',
+#                '200',
+#                '500',
+#                '2000']
+
+# Define the path relative to the root of the repository
+path = os.path.join(os.getcwd(), 'classification')  # 'classification' is directly under the repo
+path_folder = ['train', 'val']
+transformers = {
+    'train': transforms.Compose([
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ]),
+    'val': transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
+}
+
+# Load the dataset
+image_dataset = {x: datasets.ImageFolder(os.path.join(path, x), transformers[x]) for x in path_folder}
+class_names = image_dataset['train'].classes
 
 # Global variables for models
 MODEL_PATH = "models/final.pt"
@@ -74,7 +102,7 @@ def load_model():
             print(f"Model file {MODEL_PATH} not found.")
             return None
             
-        state_dict = torch.load(MODEL_PATH, map_location=device, weights_only=True)
+        state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
         return model
@@ -144,7 +172,7 @@ def predict():
         with torch.no_grad():
             outputs = model(input_image)
             probabilities = torch.nn.functional.softmax(outputs, dim=1)
-            confidence, predicted = torch.max(probabilities, 1)
+            confidence, predicted = torch.max(outputs, 1)
             predicted_class = class_names[predicted.item()]
             denomination_confidence = float(confidence.item())
 
